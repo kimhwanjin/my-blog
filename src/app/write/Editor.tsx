@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import { 
   Bold, Italic, Type, Quote, Code, 
   Link as LinkIcon, Image as ImageIcon,
-  Strikethrough, List, ListOrdered, ChevronRight
+  Strikethrough, ChevronRight, Loader2
 } from "lucide-react";
 import { publishPost } from "./actions";
-import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
 
 export default function Editor() {
   const [title, setTitle] = useState("");
@@ -16,9 +16,11 @@ export default function Editor() {
   const [content, setContent] = useState("");
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const supabase = createClient();
 
   const insertText = (before: string, after: string = "") => {
     if (!textareaRef.current) return;
@@ -43,6 +45,43 @@ export default function Editor() {
         start + before.length + selectedText.length
       );
     }, 0);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image file.");
+      return;
+    }
+
+    setIsUploading(true);
+    setError(null);
+
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+      const filePath = `post-images/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("blog-images")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("blog-images")
+        .getPublicUrl(filePath);
+
+      insertText(`![${file.name}](`, `${publicUrl})`);
+    } catch (err: any) {
+      setError(err.message || "Failed to upload image.");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const handlePublish = async (e: React.FormEvent) => {
@@ -70,6 +109,15 @@ export default function Editor() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#0d1117] text-slate-300 pb-20">
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImageUpload}
+        accept="image/*"
+        className="hidden"
+      />
+
       {/* Toolbar */}
       <div className="sticky top-0 z-40 bg-[#161b22] border-b border-slate-800 p-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
@@ -156,7 +204,14 @@ export default function Editor() {
               <button onClick={() => insertText("```\n", "\n```")} className="p-2 hover:bg-slate-800 rounded transition-colors" title="Code Block"><ChevronRight size={18}/></button>
               <div className="w-px h-6 bg-slate-800 mx-1" />
               <button onClick={() => insertText("[", "](url)")} className="p-2 hover:bg-slate-800 rounded transition-colors" title="Link"><LinkIcon size={18}/></button>
-              <button onClick={() => insertText("![alt text](", ")")} className="p-2 hover:bg-slate-800 rounded transition-colors" title="Image"><ImageIcon size={18}/></button>
+              <button 
+                onClick={() => fileInputRef.current?.click()} 
+                disabled={isUploading}
+                className="p-2 hover:bg-slate-800 rounded transition-colors relative" 
+                title="Upload Image"
+              >
+                {isUploading ? <Loader2 size={18} className="animate-spin text-emerald-500" /> : <ImageIcon size={18}/>}
+              </button>
             </div>
             
             <textarea
@@ -176,3 +231,4 @@ export default function Editor() {
     </div>
   );
 }
+
