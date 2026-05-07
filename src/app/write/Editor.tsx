@@ -7,13 +7,22 @@ import {
   Link as LinkIcon, Image as ImageIcon,
   Strikethrough, ChevronRight, Loader2
 } from "lucide-react";
-import { publishPost } from "./actions";
+import { publishPost, updatePost } from "./actions";
 import { createClient } from "@/utils/supabase/client";
 
-export default function Editor() {
-  const [title, setTitle] = useState("");
-  const [tags, setTags] = useState("");
-  const [content, setContent] = useState("");
+interface EditorProps {
+  initialData?: {
+    id: string;
+    title: string;
+    content: string;
+    category: string;
+  };
+}
+
+export default function Editor({ initialData }: EditorProps) {
+  const [title, setTitle] = useState(initialData?.title || "");
+  const [tags, setTags] = useState(initialData?.category || "");
+  const [content, setContent] = useState(initialData?.content || "");
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [isPublishing, setIsPublishing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -99,7 +108,12 @@ export default function Editor() {
     formData.append("content", content);
     formData.append("tags", tags);
 
-    const result = await publishPost(formData);
+    let result;
+    if (initialData?.id) {
+      result = await updatePost(initialData.id, formData);
+    } else {
+      result = await publishPost(formData);
+    }
     
     if (result?.error) {
       setError(result.error);
